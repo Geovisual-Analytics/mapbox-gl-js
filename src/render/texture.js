@@ -63,6 +63,11 @@ class Texture {
         context.pixelStoreUnpack.set(1);
         context.pixelStoreUnpackPremultiplyAlpha.set(this.format === gl.RGBA && (!options || options.premultiply !== false));
 
+        if (options && options.recolorImage) {
+            this.image = image;
+            image = { data: options.recolorImage(image) };
+        }
+
         if (resize) {
             this.size = [width, height];
 

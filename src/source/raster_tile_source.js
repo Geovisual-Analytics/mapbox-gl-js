@@ -58,7 +58,7 @@ class RasterTileSource extends Evented implements Source {
         this._loaded = false;
 
         this._options = extend({type: 'raster'}, options);
-        extend(this, pick(options, ['url', 'scheme', 'tileSize']));
+        extend(this, pick(options, ['url', 'scheme', 'tileSize', 'recolorImage']));
     }
 
     load() {
@@ -129,9 +129,9 @@ class RasterTileSource extends Evented implements Source {
                 const gl = context.gl;
                 tile.texture = this.map.painter.getTileTexture(img.width);
                 if (tile.texture) {
-                    tile.texture.update(img, {useMipmap: true});
+                    tile.texture.update(img, {useMipmap: true, recolorImage: this.recolorImage});
                 } else {
-                    tile.texture = new Texture(context, img, gl.RGBA, {useMipmap: true});
+                    tile.texture = new Texture(context, img, gl.RGBA, {useMipmap: true, recolorImage: this.recolorImage});
                     tile.texture.bind(gl.LINEAR, gl.CLAMP_TO_EDGE, gl.LINEAR_MIPMAP_NEAREST);
 
                     if (context.extTextureFilterAnisotropic) {
