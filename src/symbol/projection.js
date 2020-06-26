@@ -16,7 +16,7 @@ import type {
 } from '../data/array_types';
 import {WritingMode} from '../symbol/shaping';
 
-export {updateLineLabels, hideGlyphs, getLabelPlaneMatrix, getGlCoordMatrix, project, placeFirstAndLastGlyph, xyTransformMat4};
+export {updateLineLabels, hideGlyphs, getLabelPlaneMatrix, getGlCoordMatrix, project, getPerspectiveRatio, placeFirstAndLastGlyph, placeGlyphAlongLine, xyTransformMat4};
 
 /*
  * # Overview of coordinate spaces
@@ -113,6 +113,10 @@ function project(point: Point, matrix: mat4) {
     };
 }
 
+function getPerspectiveRatio(cameraToCenterDistance: number, signedDistanceFromCamera: number): number {
+    return 0.5 + 0.5 * (cameraToCenterDistance / signedDistanceFromCamera);
+}
+
 function isVisible(anchorPos: [number, number, number, number],
                    clippingBuffer: [number, number]) {
     const x = anchorPos[0] / anchorPos[3];
@@ -157,6 +161,7 @@ function updateLineLabels(bucket: SymbolBucket,
 
     for (let s = 0; s < placedSymbols.length; s++) {
         const symbol: any = placedSymbols.get(s);
+
         // Don't do calculations for vertical glyphs unless the previous symbol was horizontal
         // and we determined that vertical glyphs were necessary.
         // Also don't do calculations for symbols that are collided and fully faded out
@@ -177,23 +182,13 @@ function updateLineLabels(bucket: SymbolBucket,
         }
 
         const cameraToAnchorDistance = anchorPos[3];
-        const perspectiveRatio = 0.5 + 0.5 * (cameraToAnchorDistance / painter.transform.cameraToCenterDistance);
+        const perspectiveRatio = getPerspectiveRatio(painter.transform.cameraToCenterDistance, cameraToAnchorDistance);
 
         const fontSize = symbolSize.evaluateSizeForFeature(sizeData, partiallyEvaluatedSize, symbol);
-        const pitchScaledFontSize = pitchWithMap ?
-            fontSize * perspectiveRatio :
-            fontSize / perspectiveRatio;
+        const pitchScaledFontSize = pitchWithMap ? fontSize / perspectiveRatio : fontSize * perspectiveRatio;
 
         const tileAnchorPoint = new Point(symbol.anchorX, symbol.anchorY);
-        const transformedTileAnchor = project(tileAnchorPoint, labelPlaneMatrix);
-
-        // Skip labels behind the camera
-        if (transformedTileAnchor.signedDistanceFromCamera <= 0.0) {
-            hideGlyphs(symbol.numGlyphs, dynamicLayoutVertexArray);
-            continue;
-        }
-
-        const anchorPoint = transformedTileAnchor.point;
+        const anchorPoint = project(tileAnchorPoint, labelPlaneMatrix).point;
         const projectionCache = {};
 
         const placeUnflipped: any = placeGlyphsAlongLine(symbol, pitchScaledFontSize, false /*unflipped*/, keepUpright, posMatrix, labelPlaneMatrix, glCoordMatrix,
@@ -216,7 +211,7 @@ function updateLineLabels(bucket: SymbolBucket,
     }
 }
 
-function placeFirstAndLastGlyph(fontScale: number, glyphOffsetArray: GlyphOffsetArray, lineOffsetX: number, lineOffsetY: number, flip: boolean, anchorPoint: Point, tileAnchorPoint: Point, symbol: any, lineVertexArray: SymbolLineVertexArray, labelPlaneMatrix: mat4, projectionCache: any, returnTileDistance: boolean) {
+function placeFirstAndLastGlyph(fontScale: number, glyphOffsetArray: GlyphOffsetArray, lineOffsetX: number, lineOffsetY: number, flip: boolean, anchorPoint: Point, tileAnchorPoint: Point, symbol: any, lineVertexArray: SymbolLineVertexArray, labelPlaneMatrix: mat4, projectionCache: any) {
     const glyphEndIndex = symbol.glyphStartIndex + symbol.numGlyphs;
     const lineStartIndex = symbol.lineStartIndex;
     const lineEndIndex = symbol.lineStartIndex + symbol.lineLength;
@@ -225,12 +220,12 @@ function placeFirstAndLastGlyph(fontScale: number, glyphOffsetArray: GlyphOffset
     const lastGlyphOffset = glyphOffsetArray.getoffsetX(glyphEndIndex - 1);
 
     const firstPlacedGlyph = placeGlyphAlongLine(fontScale * firstGlyphOffset, lineOffsetX, lineOffsetY, flip, anchorPoint, tileAnchorPoint, symbol.segment,
-        lineStartIndex, lineEndIndex, lineVertexArray, labelPlaneMatrix, projectionCache, returnTileDistance);
+        lineStartIndex, lineEndIndex, lineVertexArray, labelPlaneMatrix, projectionCache);
     if (!firstPlacedGlyph)
         return null;
 
     const lastPlacedGlyph = placeGlyphAlongLine(fontScale * lastGlyphOffset, lineOffsetX, lineOffsetY, flip, anchorPoint, tileAnchorPoint, symbol.segment,
-        lineStartIndex, lineEndIndex, lineVertexArray, labelPlaneMatrix, projectionCache, returnTileDistance);
+        lineStartIndex, lineEndIndex, lineVertexArray, labelPlaneMatrix, projectionCache);
     if (!lastPlacedGlyph)
         return null;
 
@@ -271,7 +266,7 @@ function placeGlyphsAlongLine(symbol, fontSize, flip, keepUpright, posMatrix, la
 
         // Place the first and the last glyph in the label first, so we can figure out
         // the overall orientation of the label and determine whether it needs to be flipped in keepUpright mode
-        const firstAndLastGlyph = placeFirstAndLastGlyph(fontScale, glyphOffsetArray, lineOffsetX, lineOffsetY, flip, anchorPoint, tileAnchorPoint, symbol, lineVertexArray, labelPlaneMatrix, projectionCache, false);
+        const firstAndLastGlyph = placeFirstAndLastGlyph(fontScale, glyphOffsetArray, lineOffsetX, lineOffsetY, flip, anchorPoint, tileAnchorPoint, symbol, lineVertexArray, labelPlaneMatrix, projectionCache);
         if (!firstAndLastGlyph) {
             return {notEnoughRoom: true};
         }
@@ -290,7 +285,7 @@ function placeGlyphsAlongLine(symbol, fontSize, flip, keepUpright, posMatrix, la
             // Since first and last glyph fit on the line, we're sure that the rest of the glyphs can be placed
             // $FlowFixMe
             placedGlyphs.push(placeGlyphAlongLine(fontScale * glyphOffsetArray.getoffsetX(glyphIndex), lineOffsetX, lineOffsetY, flip, anchorPoint, tileAnchorPoint, symbol.segment,
-                lineStartIndex, lineEndIndex, lineVertexArray, labelPlaneMatrix, projectionCache, false));
+                lineStartIndex, lineEndIndex, lineVertexArray, labelPlaneMatrix, projectionCache));
         }
         placedGlyphs.push(firstAndLastGlyph.last);
     } else {
@@ -316,7 +311,7 @@ function placeGlyphsAlongLine(symbol, fontSize, flip, keepUpright, posMatrix, la
         }
         // $FlowFixMe
         const singleGlyph = placeGlyphAlongLine(fontScale * glyphOffsetArray.getoffsetX(symbol.glyphStartIndex), lineOffsetX, lineOffsetY, flip, anchorPoint, tileAnchorPoint, symbol.segment,
-            symbol.lineStartIndex, symbol.lineStartIndex + symbol.lineLength, lineVertexArray, labelPlaneMatrix, projectionCache, false);
+            symbol.lineStartIndex, symbol.lineStartIndex + symbol.lineLength, lineVertexArray, labelPlaneMatrix, projectionCache);
         if (!singleGlyph)
             return {notEnoughRoom: true};
 
@@ -351,8 +346,7 @@ function placeGlyphAlongLine(offsetX: number,
                              lineEndIndex: number,
                              lineVertexArray: SymbolLineVertexArray,
                              labelPlaneMatrix: mat4,
-                             projectionCache: {[number]: Point},
-                             returnTileDistance: boolean) {
+                             projectionCache: {[_: number]: Point}) {
 
     const combinedOffsetX = flip ?
         offsetX - lineOffsetX :
@@ -374,12 +368,12 @@ function placeGlyphAlongLine(offsetX: number,
         lineStartIndex + anchorSegment :
         lineStartIndex + anchorSegment + 1;
 
-    const initialIndex = currentIndex;
     let current = anchorPoint;
     let prev = anchorPoint;
     let distanceToPrev = 0;
     let currentSegmentDistance = 0;
     const absOffsetX = Math.abs(combinedOffsetX);
+    const pathVertices = [];
 
     while (distanceToPrev + currentSegmentDistance <= absOffsetX) {
         currentIndex += dir;
@@ -389,6 +383,7 @@ function placeGlyphAlongLine(offsetX: number,
             return null;
 
         prev = current;
+        pathVertices.push(current);
 
         current = projectionCache[currentIndex];
         if (current === undefined) {
@@ -422,14 +417,12 @@ function placeGlyphAlongLine(offsetX: number,
 
     const segmentAngle = angle + Math.atan2(current.y - prev.y, current.x - prev.x);
 
+    pathVertices.push(p);
+
     return {
         point: p,
         angle: segmentAngle,
-        tileDistance: returnTileDistance ?
-            {
-                prevTileDistance: (currentIndex - dir) === initialIndex ? 0 : lineVertexArray.gettileUnitDistanceFromAnchor(currentIndex - dir),
-                lastSegmentViewportDistance: absOffsetX - distanceToPrev
-            } : null
+        path: pathVertices
     };
 }
 
