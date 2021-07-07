@@ -1,23 +1,26 @@
-import {test} from '../../util/test';
+import {test} from '../../util/test.js';
 import fs from 'fs';
 import path from 'path';
 import Protobuf from 'pbf';
 import {VectorTile} from '@mapbox/vector-tile';
-import SymbolBucket from '../../../src/data/bucket/symbol_bucket';
-import {CollisionBoxArray} from '../../../src/data/array_types';
-import {performSymbolLayout} from '../../../src/symbol/symbol_layout';
-import {Placement} from '../../../src/symbol/placement';
-import Transform from '../../../src/geo/transform';
-import {OverscaledTileID} from '../../../src/source/tile_id';
-import Tile from '../../../src/source/tile';
-import CrossTileSymbolIndex from '../../../src/symbol/cross_tile_symbol_index';
-import FeatureIndex from '../../../src/data/feature_index';
-import {createSymbolBucket} from '../../util/create_symbol_layer';
+import SymbolBucket from '../../../src/data/bucket/symbol_bucket.js';
+import {CollisionBoxArray} from '../../../src/data/array_types.js';
+import {performSymbolLayout} from '../../../src/symbol/symbol_layout.js';
+import {Placement} from '../../../src/symbol/placement.js';
+import Transform from '../../../src/geo/transform.js';
+import {OverscaledTileID} from '../../../src/source/tile_id.js';
+import Tile from '../../../src/source/tile.js';
+import CrossTileSymbolIndex from '../../../src/symbol/cross_tile_symbol_index.js';
+import FeatureIndex from '../../../src/data/feature_index.js';
+import {createSymbolBucket} from '../../util/create_symbol_layer.js';
+
+import {fileURLToPath} from 'url';
+const __dirname = fileURLToPath(new URL('.', import.meta.url));
 
 // Load a point feature from fixture tile.
 const vt = new VectorTile(new Protobuf(fs.readFileSync(path.join(__dirname, '/../../fixtures/mbsv5-6-18-23.vector.pbf'))));
 const feature = vt.layers.place_label.feature(10);
-const glyphs = JSON.parse(fs.readFileSync(path.join(__dirname, '/../../fixtures/fontstack-glyphs.json')));
+const glyphData = JSON.parse(fs.readFileSync(path.join(__dirname, '/../../fixtures/fontstack-glyphs.json')));
 
 /*eslint new-cap: 0*/
 const collisionBoxArray = new CollisionBoxArray();
@@ -26,7 +29,12 @@ transform.width = 100;
 transform.height = 100;
 transform.cameraToCenterDistance = 100;
 
-const stacks = {'Test': glyphs};
+const stacks = {'Test': glyphData};
+const glyphPositions = {'Test' : {}};
+const glyphPositonMap = glyphPositions['Test'];
+for (const id in glyphData.glyphs) {
+    glyphPositonMap[id] = glyphData.glyphs[id].rect;
+}
 
 function bucketSetup(text = 'abcde') {
     return createSymbolBucket('test', 'Test', text, collisionBoxArray);
@@ -42,7 +50,7 @@ test('SymbolBucket', (t) => {
 
     // add feature from bucket A
     bucketA.populate([{feature}], options);
-    performSymbolLayout(bucketA, stacks, {});
+    performSymbolLayout(bucketA, stacks, glyphPositions);
     const tileA = new Tile(tileID, 512);
     tileA.latestFeatureIndex = new FeatureIndex(tileID);
     tileA.buckets = {test: bucketA};
@@ -50,7 +58,7 @@ test('SymbolBucket', (t) => {
 
     // add same feature from bucket B
     bucketB.populate([{feature}], options);
-    performSymbolLayout(bucketB, stacks, {});
+    performSymbolLayout(bucketB, stacks, glyphPositions);
     const tileB = new Tile(tileID, 512);
     tileB.buckets = {test: bucketB};
     tileB.collisionBoxArray = collisionBoxArray;
@@ -84,8 +92,8 @@ test('SymbolBucket integer overflow', (t) => {
     const options = {iconDependencies: {}, glyphDependencies: {}};
 
     bucket.populate([{feature}], options);
-    const fakeGlyph = {rect: {w: 10, h: 10}, metrics: {left: 10, top: 10, advance: 10}};
-    performSymbolLayout(bucket, stacks, {'Test': {97: fakeGlyph, 98: fakeGlyph, 99: fakeGlyph, 100: fakeGlyph, 101: fakeGlyph, 102: fakeGlyph}});
+    const fakeRect = {w: 10, h: 10};
+    performSymbolLayout(bucket, stacks, {'Test':  {97: fakeRect, 98: fakeRect, 99: fakeRect, 100: fakeRect, 101: fakeRect, 102: fakeRect}});
 
     t.ok(console.warn.calledOnce);
     t.ok(console.warn.getCall(0).calledWithMatch(/Too many glyphs being rendered in a tile./));

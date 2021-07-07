@@ -1,3 +1,49 @@
+## 13.20.1
+
+### 🐞 Bug fixes
+
+* Increase strictness of the style API validation for source types ([#10779](https://github.com/mapbox/mapbox-gl-js/pull/10779))
+* Remove strictly-increasing requirement for fog range validation ([#10772](https://github.com/mapbox/mapbox-gl-js/pull/10772))
+
+## 13.20.0
+
+### ✨ Features and improvements
+
+* Add configurable fog as a root style specification ([#10564](https://github.com/mapbox/mapbox-gl-js/pull/10564))
+* Add support for data-driven expressions in `line-dasharray` and `line-cap` properties. ([#10591](https://github.com/mapbox/mapbox-gl-js/pull/10591))
+* Add support for data-driven `text-line-height` ([#10612](https://github.com/mapbox/mapbox-gl-js/pull/10612))
+
+## 13.19.0
+
+### ✨ Features and improvements
+
+* Added array support to minimums and maximums, allowing for validation of multi-dimensional style-spec value constraints. ([#10272](https://github.com/mapbox/mapbox-gl-js/pull/10272))
+
+## 13.18.1
+
+### 🐞 Bug fixes
+* Fixed a bug where `map.setStyle` couldn't be used to enable terrain. ([#10177](https://github.com/mapbox/mapbox-gl-js/pull/10177))
+
+## 13.18.0
+
+### ✨ Features and improvements
+
+* Add 3D terrain feature. All layer types and markers can now be extruded using the new `terrain` root level style-spec property or with the function `map.setTerrain()`. ([#1489](https://github.com/mapbox/mapbox-gl-js/issues/1489))
+* Add support for unlocked pitch up to 85° (previously 60°). ([#3731](https://github.com/mapbox/mapbox-gl-js/issues/3731))
+* Add a new sky layer acting as an infinite background above the horizon line. This layer can be used from the style-spec and has two types: `atmospheric` and `gradient`.
+
+## 13.17.0
+
+### ✨ Features and improvements
+* Add a `filter` option for GeoJSON sources to filter out features prior to processing (e.g. before clustering). [#9864](https://github.com/mapbox/mapbox-gl-js/pull/9864)
+
+## 13.16.0
+
+### ✨ Features and improvements
+* Added `volatile` source property to control storing the tiles in local storage. ([9702](https://github.com/mapbox/mapbox-gl-js/pull/9702))
+
+* Added `clusterMinPoints` option for clustered GeoJSON sources that defines the minimum number of points to form a cluster. ([#9748](https://github.com/mapbox/mapbox-gl-js/pull/9748))
+
 ## 13.15.0
 
 ### ✨ Features and improvements

@@ -1,14 +1,16 @@
-import {test} from '../../util/test';
-import {extend} from '../../../src/util/util';
-import window from '../../../src/util/window';
-import Map from '../../../src/ui/map';
-import {createMap} from '../../util';
-import LngLat from '../../../src/geo/lng_lat';
-import Tile from '../../../src/source/tile';
-import {OverscaledTileID} from '../../../src/source/tile_id';
-import {Event, ErrorEvent} from '../../../src/util/evented';
-import simulate from '../../util/simulate_interaction';
-import {fixedLngLat, fixedNum} from '../../util/fixed';
+import {test} from '../../util/test.js';
+import {extend} from '../../../src/util/util.js';
+import window from '../../../src/util/window.js';
+import Map from '../../../src/ui/map.js';
+import {createMap} from '../../util/index.js';
+import LngLat from '../../../src/geo/lng_lat.js';
+import Tile from '../../../src/source/tile.js';
+import {OverscaledTileID} from '../../../src/source/tile_id.js';
+import {Event, ErrorEvent} from '../../../src/util/evented.js';
+import simulate from '../../util/simulate_interaction.js';
+import {fixedLngLat, fixedNum} from '../../util/fixed.js';
+import Fog from '../../../src/style/fog.js';
+import Color from '../../../src/style-spec/util/color.js';
 
 function createStyleSource() {
     return {
@@ -44,7 +46,8 @@ test('Map', (t) => {
         t.ok(map.touchZoomRotate.isEnabled());
         t.throws(() => {
             new Map({
-                container: 'anElementIdWhichDoesNotExistInTheDocument'
+                container: 'anElementIdWhichDoesNotExistInTheDocument',
+                testMode: true
             });
         }, new Error("Container 'anElementIdWhichDoesNotExistInTheDocument' not found"), 'throws on invalid map container id');
         t.end();
@@ -132,7 +135,8 @@ test('Map', (t) => {
 
     t.test('emits load event after a style is set', (t) => {
         t.stub(Map.prototype, '_detectMissingCSS');
-        const map = new Map({container: window.document.createElement('div')});
+        t.stub(Map.prototype, '_authenticate');
+        const map = new Map({container: window.document.createElement('div'), testMode: true});
 
         map.on('load', fail);
 
@@ -149,7 +153,7 @@ test('Map', (t) => {
     t.test('#setStyle', (t) => {
         t.test('returns self', (t) => {
             t.stub(Map.prototype, '_detectMissingCSS');
-            const map = new Map({container: window.document.createElement('div')});
+            const map = new Map({container: window.document.createElement('div'), testMode: true});
             t.equal(map.setStyle({
                 version: 8,
                 sources: {},
@@ -228,7 +232,8 @@ test('Map', (t) => {
 
         t.test('style transform overrides unmodified map transform', (t) => {
             t.stub(Map.prototype, '_detectMissingCSS');
-            const map = new Map({container: window.document.createElement('div')});
+            t.stub(Map.prototype, '_authenticate');
+            const map = new Map({container: window.document.createElement('div'), testMode: true});
             map.transform.lngRange = [-120, 140];
             map.transform.latRange = [-60, 80];
             map.transform.resize(600, 400);
@@ -246,7 +251,8 @@ test('Map', (t) => {
 
         t.test('style transform does not override map transform modified via options', (t) => {
             t.stub(Map.prototype, '_detectMissingCSS');
-            const map = new Map({container: window.document.createElement('div'), zoom: 10, center: [-77.0186, 38.8888]});
+            t.stub(Map.prototype, '_authenticate');
+            const map = new Map({container: window.document.createElement('div'), zoom: 10, center: [-77.0186, 38.8888], testMode: true});
             t.notOk(map.transform.unmodified, 'map transform is modified by options');
             map.setStyle(createStyle());
             map.on('style.load', () => {
@@ -260,7 +266,8 @@ test('Map', (t) => {
 
         t.test('style transform does not override map transform modified via setters', (t) => {
             t.stub(Map.prototype, '_detectMissingCSS');
-            const map = new Map({container: window.document.createElement('div')});
+            t.stub(Map.prototype, '_authenticate');
+            const map = new Map({container: window.document.createElement('div'), testMode: true});
             t.ok(map.transform.unmodified);
             map.setZoom(10);
             map.setCenter([-77.0186, 38.8888]);
@@ -282,6 +289,168 @@ test('Map', (t) => {
             t.spy(style, '_remove');
             map.setStyle(null);
             t.equal(style._remove.callCount, 1);
+            t.end();
+        });
+
+        t.test('updating terrain triggers style diffing using setTerrain operation', (t) => {
+            t.test('removing terrain', (t) => {
+                const style = createStyle();
+                style['sources']["mapbox-dem"] = {
+                    "type": "raster-dem",
+                    "tiles": ['http://example.com/{z}/{x}/{y}.png'],
+                    "tileSize": 256,
+                    "maxzoom": 14
+                };
+                style['terrain'] = {
+                    "source": "mapbox-dem"
+                };
+                const map = createMap(t, {style});
+                const initStyleObj = map.style;
+                t.spy(initStyleObj, 'setTerrain');
+                t.spy(initStyleObj, 'setState');
+                map.on('style.load', () => {
+                    map.setStyle(createStyle());
+                    t.equal(initStyleObj, map.style);
+                    t.equal(initStyleObj.setState.callCount, 1);
+                    t.equal(initStyleObj.setTerrain.callCount, 1);
+                    t.ok(map.style.terrain == null);
+                    t.end();
+                });
+
+            });
+
+            t.test('adding terrain', (t) => {
+                const style = createStyle();
+                const map = createMap(t, {style});
+                const initStyleObj = map.style;
+                t.spy(initStyleObj, 'setTerrain');
+                t.spy(initStyleObj, 'setState');
+                map.on('style.load', () => {
+                    const styleWithTerrain = JSON.parse(JSON.stringify(style));
+
+                    styleWithTerrain['sources']["mapbox-dem"] = {
+                        "type": "raster-dem",
+                        "tiles": ['http://example.com/{z}/{x}/{y}.png'],
+                        "tileSize": 256,
+                        "maxzoom": 14
+                    };
+                    styleWithTerrain['terrain'] = {
+                        "source": "mapbox-dem"
+                    };
+                    map.setStyle(styleWithTerrain);
+                    t.equal(initStyleObj, map.style);
+                    t.equal(initStyleObj.setState.callCount, 1);
+                    t.equal(initStyleObj.setTerrain.callCount, 1);
+                    t.ok(map.style.terrain);
+                    t.end();
+                });
+            });
+
+            t.end();
+        });
+
+        t.test('updating fog results in correct transitions', (t) => {
+            t.test('sets fog with transition', (t) => {
+                const fog = new Fog({
+                    'color': 'white',
+                    'range': [0, 1],
+                    'horizon-blend': 0.0
+                });
+                fog.set({'color-transition': {duration: 3000}});
+
+                fog.set({'color': 'red'});
+                fog.updateTransitions({transition: true}, {});
+                fog.recalculate({zoom: 16, zoomHistory: {}, now: 1500});
+                t.deepEqual(fog.properties.get('color'), new Color(1, 0.5, 0.5, 1));
+                fog.recalculate({zoom: 16, zoomHistory: {}, now: 3000});
+                t.deepEqual(fog.properties.get('color'), new Color(1, 0.0, 0.0, 1));
+                fog.recalculate({zoom: 16, zoomHistory: {}, now: 3500});
+                t.deepEqual(fog.properties.get('color'), new Color(1, 0.0, 0.0, 1));
+
+                fog.set({'range-transition': {duration: 3000}});
+                fog.set({'range': [2, 5]});
+                fog.updateTransitions({transition: true}, {});
+                fog.recalculate({zoom: 16, zoomHistory: {}, now: 1500});
+                t.deepEqual(fog.properties.get('range')[0], 1);
+                t.deepEqual(fog.properties.get('range')[1], 3);
+                fog.recalculate({zoom: 16, zoomHistory: {}, now: 3000});
+                t.deepEqual(fog.properties.get('range')[0], 2);
+                t.deepEqual(fog.properties.get('range')[1], 5);
+                fog.recalculate({zoom: 16, zoomHistory: {}, now: 3500});
+                t.deepEqual(fog.properties.get('range')[0], 2);
+                t.deepEqual(fog.properties.get('range')[1], 5);
+
+                fog.set({'horizon-blend-transition': {duration: 3000}});
+                fog.set({'horizon-blend': 0.5});
+                fog.updateTransitions({transition: true}, {});
+                fog.recalculate({zoom: 16, zoomHistory: {}, now: 1500});
+                t.deepEqual(fog.properties.get('horizon-blend'), 0.25);
+                fog.recalculate({zoom: 16, zoomHistory: {}, now: 3000});
+                t.deepEqual(fog.properties.get('horizon-blend'), 0.5);
+                fog.recalculate({zoom: 16, zoomHistory: {}, now: 3500});
+                t.deepEqual(fog.properties.get('horizon-blend'), 0.5);
+
+                t.end();
+            });
+
+            t.test('fog respects validation option', (t) => {
+                const fog = new Fog({});
+                const fogSpy = t.spy(fog, '_validate');
+
+                fog.set({color: [444]}, {validate: false});
+                fog.updateTransitions({transition: false}, {});
+                fog.recalculate({zoom: 16, zoomHistory: {}, now: 10});
+
+                t.ok(fogSpy.calledOnce);
+                t.deepEqual(fog.properties.get('color'), [444]);
+                t.end();
+            });
+            t.end();
+        });
+
+        t.test('updating fog triggers style diffing using setFog operation', (t) => {
+            t.test('removing fog', (t) => {
+                const style = createStyle();
+                style['fog'] = {
+                    "range": [2, 5],
+                    "color": "white"
+                };
+                const map = createMap(t, {style});
+                const initStyleObj = map.style;
+                t.spy(initStyleObj, 'setFog');
+                t.spy(initStyleObj, 'setState');
+                map.on('style.load', () => {
+                    map.setStyle(createStyle());
+                    t.equal(initStyleObj, map.style);
+                    t.equal(initStyleObj.setState.callCount, 1);
+                    t.equal(initStyleObj.setFog.callCount, 1);
+                    t.ok(map.style.fog == null);
+                    t.end();
+                });
+            });
+
+            t.test('adding fog', (t) => {
+                const style = createStyle();
+                const map = createMap(t, {style});
+                const initStyleObj = map.style;
+                t.spy(initStyleObj, 'setFog');
+                t.spy(initStyleObj, 'setState');
+                map.on('style.load', () => {
+                    const styleWithFog = JSON.parse(JSON.stringify(style));
+
+                    styleWithFog['fog'] = {
+                        "range": [2, 5],
+                        "color": "white"
+                    };
+                    map.setStyle(styleWithFog);
+                    t.equal(initStyleObj, map.style);
+                    t.equal(initStyleObj.setState.callCount, 1);
+                    t.equal(initStyleObj.setFog.callCount, 1);
+                    t.ok(map.style.fog);
+                    t.end();
+                });
+            });
+
             t.end();
         });
 
@@ -324,9 +493,9 @@ test('Map', (t) => {
             map.on('load', () => {
                 const fakeTileId = new OverscaledTileID(0, 0, 0, 0, 0);
                 map.addSource('geojson', createStyleSource());
-                map.style.sourceCaches.geojson._tiles[fakeTileId.key] = new Tile(fakeTileId);
+                map.style._getSourceCache('geojson')._tiles[fakeTileId.key] = new Tile(fakeTileId);
                 t.equal(map.areTilesLoaded(), false, 'returns false if tiles are loading');
-                map.style.sourceCaches.geojson._tiles[fakeTileId.key].state = 'loaded';
+                map.style._getSourceCache('geojson')._tiles[fakeTileId.key].state = 'loaded';
                 t.equal(map.areTilesLoaded(), true, 'returns true if tiles are loaded');
                 t.end();
             });
@@ -354,6 +523,60 @@ test('Map', (t) => {
                 t.deepEqual(map.getStyle(), extend(createStyle(), {
                     sources: {geojson: createStyleSource()}
                 }));
+                t.end();
+            });
+        });
+
+        t.test('returns the style with added terrain', (t) => {
+            const style = createStyle();
+            const map = createMap(t, {style});
+
+            map.on('load', () => {
+                const terrain = {source: "terrain-source-id", exaggeration: 2};
+                map.addSource('terrain-source-id', {
+                    "type": "raster-dem",
+                    "tiles": [
+                        "local://tiles/{z}-{x}-{y}.terrain.png"
+                    ]
+                });
+                map.setTerrain(terrain);
+                t.deepEqual(map.getStyle(), extend(createStyle(), {
+                    terrain, 'sources': map.getStyle().sources
+                }));
+                t.end();
+            });
+        });
+
+        t.test('returns the style with added fog', (t) => {
+            const style = createStyle();
+            const map = createMap(t, {style});
+
+            map.on('load', () => {
+                const fog = {
+                    "range": [2, 5],
+                    "color": "blue"
+                };
+                map.setFog(fog);
+                t.deepEqual(map.getStyle(), extend(createStyle(), {
+                    fog
+                }));
+                t.ok(map.getFog());
+                t.end();
+            });
+        });
+
+        t.test('returns the style with removed fog', (t) => {
+            const style = createStyle();
+            style['fog'] = {
+                "range": [2, 5],
+                "color": "white"
+            };
+            const map = createMap(t, {style});
+
+            map.on('load', () => {
+                map.setFog(null);
+                t.deepEqual(map.getStyle(), createStyle());
+                t.equal(map.getFog(), null);
                 t.end();
             });
         });
@@ -615,6 +838,24 @@ test('Map', (t) => {
             map.setBearing(135);
             t.deepEqual(
                 toFixed([[-49.718445552178764, -44.44541580601936], [49.7184455522, 44.445415806019355]]),
+                toFixed(map.getBounds().toArray())
+            );
+
+            t.end();
+        });
+
+        t.test('padded bounds', (t) => {
+            const map = createMap(t, {zoom: 1, bearing: 45, skipCSSStub: true});
+
+            map.setPadding({
+                left: 100,
+                right: 10,
+                top: 10,
+                bottom: 10
+            });
+
+            t.deepEqual(
+                toFixed([[-33.5599507477, -31.7907658998], [33.5599507477, 31.7907658998]]),
                 toFixed(map.getBounds().toArray())
             );
 
@@ -887,7 +1128,7 @@ test('Map', (t) => {
 
     t.test('#getMaxPitch', (t) => {
         const map = createMap(t, {pitch: 0});
-        t.equal(map.getMaxPitch(), 60, 'returns default value');
+        t.equal(map.getMaxPitch(), 85, 'returns default value');
         map.setMaxPitch(10);
         t.equal(map.getMaxPitch(), 10, 'returns custom value');
         t.end();
@@ -920,7 +1161,7 @@ test('Map', (t) => {
     t.test('throw on maxPitch greater than valid maxPitch at init', (t) => {
         t.throws(() => {
             createMap(t, {maxPitch: 90});
-        }, new Error(`maxPitch must be less than or equal to 60`));
+        }, new Error(`maxPitch must be less than or equal to 85`));
         t.end();
     });
 
@@ -1019,6 +1260,22 @@ test('Map', (t) => {
 
     });
 
+    t.test('#hasControl', (t) => {
+        const map = createMap(t);
+        function Ctrl() {}
+        Ctrl.prototype = {
+            onAdd(_) {
+                return window.document.createElement('div');
+            }
+        };
+
+        const control = new Ctrl();
+        t.equal(map.hasControl(control), false, 'Reference to control is not found');
+        map.addControl(control);
+        t.equal(map.hasControl(control), true, 'Reference to control is found');
+        t.end();
+    });
+
     t.test('#project', (t) => {
         const map = createMap(t);
         t.deepEqual(map.project([0, 0]), {x: 100, y: 100});
@@ -1044,6 +1301,115 @@ test('Map', (t) => {
             t.equals(images[0], 'img');
             t.end();
         });
+    });
+
+    t.test('#queryFogOpacity', (t) => {
+        t.test('normal range', (t) => {
+            const style = createStyle();
+            const map = createMap(t, {style});
+            map.on('load', () => {
+                map.setFog({
+                    "range": [0.5, 10.5]
+                });
+
+                t.ok(map.getFog());
+
+                map.once('render', () => {
+                    map.setZoom(10);
+                    map.setCenter([0, 0]);
+                    map.setPitch(0);
+
+                    t.deepEqual(map._queryFogOpacity([0, 0]), 0.0);
+
+                    t.deepEqual(map._queryFogOpacity([50, 0]), 0.0);
+                    t.deepEqual(map._queryFogOpacity([0, 50]), 0.0);
+                    t.deepEqual(map._queryFogOpacity([-50, 0]), 0.0);
+                    t.deepEqual(map._queryFogOpacity([-50, -50]), 0.0);
+
+                    map.setBearing(90);
+                    map.setPitch(70);
+
+                    t.deepEqual(map._queryFogOpacity([0, 0]), 0.0);
+
+                    t.deepEqual(map._queryFogOpacity([0.5, 0]), 0.5963390859543484);
+                    t.deepEqual(map._queryFogOpacity([0, 0.5]), 0.31817612773293763);
+                    t.deepEqual(map._queryFogOpacity([-0.5, 0]), 0.0021931905967484703);
+                    t.deepEqual(map._queryFogOpacity([-0.5, -0.5]), 0.4147318524978687);
+
+                    t.deepEqual(map._queryFogOpacity([2, 0]), 1.0);
+                    t.deepEqual(map._queryFogOpacity([0, 2]), 1.0);
+                    t.deepEqual(map._queryFogOpacity([-2, 0]), 1.0);
+                    t.deepEqual(map._queryFogOpacity([-2, -2]), 1.0);
+
+                    map.transform.fov = 30;
+
+                    t.deepEqual(map._queryFogOpacity([0.5, 0]), 0.5917784571074153);
+                    t.deepEqual(map._queryFogOpacity([0, 0.5]), 0.2567224170602245);
+                    t.deepEqual(map._queryFogOpacity([-0.5, 0]), 0);
+                    t.deepEqual(map._queryFogOpacity([-0.5, -0.5]), 0.2727527139608868);
+
+                    t.end();
+                });
+            });
+        });
+
+        t.test('inverted range', (t) => {
+            const style = createStyle();
+            const map = createMap(t, {style});
+            map.on('load', () => {
+                map.setFog({
+                    "range": [10.5, 0.5]
+                });
+
+                t.ok(map.getFog());
+
+                map.once('render', () => {
+                    map.setZoom(10);
+                    map.setCenter([0, 0]);
+                    map.setBearing(90);
+                    map.setPitch(70);
+
+                    t.deepEqual(map._queryFogOpacity([0, 0]), 1.0);
+
+                    t.deepEqual(map._queryFogOpacity([0.5, 0]), 0.961473076058084);
+                    t.deepEqual(map._queryFogOpacity([0, 0.5]), 0.9841669559435576);
+                    t.deepEqual(map._queryFogOpacity([-0.5, 0]), 0.9988871471476187);
+                    t.deepEqual(map._queryFogOpacity([-0.5, -0.5]), 0.9784993261529342);
+
+                    t.end();
+                });
+            });
+        });
+
+        t.test('identical range', (t) => {
+            const style = createStyle();
+            const map = createMap(t, {style});
+            map.on('load', () => {
+                map.setFog({
+                    "range": [0, 0]
+                });
+
+                t.ok(map.getFog());
+
+                map.once('render', () => {
+                    map.setZoom(5);
+                    map.setCenter([0, 0]);
+                    map.setBearing(90);
+                    map.setPitch(70);
+
+                    t.deepEqual(map._queryFogOpacity([0, 0]), 0);
+
+                    t.deepEqual(map._queryFogOpacity([0.5, 0]), 1);
+                    t.deepEqual(map._queryFogOpacity([0, 0.5]), 0);
+                    t.deepEqual(map._queryFogOpacity([-0.5, 0]), 0);
+                    t.deepEqual(map._queryFogOpacity([0, -0.5]), 0);
+
+                    t.end();
+                });
+            });
+        });
+
+        t.end();
     });
 
     t.test('#listImages throws an error if called before "load"', (t) => {
@@ -1080,7 +1446,7 @@ test('Map', (t) => {
                 const output = map.queryRenderedFeatures(map.project(new LngLat(0, 0)));
 
                 const args = map.style.queryRenderedFeatures.getCall(0).args;
-                t.deepEqual(args[0], [{x: 100, y: 100}]); // query geometry
+                t.deepEqual(args[0], {x: 100, y: 100}); // query geometry
                 t.deepEqual(args[1], {availableImages: []}); // params
                 t.deepEqual(args[2], map.transform); // transform
                 t.deepEqual(output, []);
@@ -1128,7 +1494,7 @@ test('Map', (t) => {
 
                 map.queryRenderedFeatures(map.project(new LngLat(360, 0)));
 
-                t.deepEqual(map.style.queryRenderedFeatures.getCall(0).args[0], [{x: 612, y: 100}]);
+                t.deepEqual(map.style.queryRenderedFeatures.getCall(0).args[0], {x: 612, y: 100});
                 t.end();
             });
         });
@@ -1214,7 +1580,7 @@ test('Map', (t) => {
             });
         });
 
-        t.test('fires a data event', (t) => {
+        t.test('fires a data event on background layer', (t) => {
             // background layers do not have a source
             const map = createMap(t, {
                 style: {
@@ -1238,6 +1604,37 @@ test('Map', (t) => {
                 });
 
                 map.setLayoutProperty('background', 'visibility', 'visible');
+            });
+        });
+
+        t.test('fires a data event on sky layer', (t) => {
+            // sky layers do not have a source
+            const map = createMap(t, {
+                style: {
+                    "version": 8,
+                    "sources": {},
+                    "layers": [{
+                        "id": "sky",
+                        "type": "sky",
+                        "layout": {
+                            "visibility": "none"
+                        },
+                        "paint": {
+                            "sky-type": "atmosphere",
+                            "sky-atmosphere-sun": [0, 0]
+                        }
+                    }]
+                }
+            });
+
+            map.once('style.load', () => {
+                map.once('data', (e) => {
+                    if (e.dataType === 'style') {
+                        t.end();
+                    }
+                });
+
+                map.setLayoutProperty('sky', 'visibility', 'visible');
             });
         });
 
@@ -2025,7 +2422,7 @@ test('Map', (t) => {
         window.document.styleSheets[0] = styleSheet;
         window.document.styleSheets.length = 1;
 
-        new Map({container: window.document.createElement('div')});
+        new Map({container: window.document.createElement('div'), testMode: true});
 
         t.notok(stub.calledOnce);
         t.end();
@@ -2033,7 +2430,7 @@ test('Map', (t) => {
 
     t.test('should warn when CSS is missing', (t) => {
         const stub = t.stub(console, 'warn');
-        new Map({container: window.document.createElement('div')});
+        new Map({container: window.document.createElement('div'), testMode: true});
 
         t.ok(stub.calledOnce);
 
