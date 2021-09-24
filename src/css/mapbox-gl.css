@@ -97,6 +97,7 @@
     box-sizing: border-box;
     background-color: transparent;
     cursor: pointer;
+    overflow: hidden;
 }
 
 .mapboxgl-ctrl-group button + button {
@@ -700,6 +701,28 @@ a.mapboxgl-ctrl-logo.mapboxgl-compact {
     width: 19px;
     box-sizing: border-box;
     box-shadow: 0 0 3px rgba(0, 0, 0, 0.35);
+}
+
+.mapboxgl-user-location-show-heading .mapboxgl-user-location-heading {
+    width: 0;
+    height: 0;
+}
+
+.mapboxgl-user-location-show-heading .mapboxgl-user-location-heading::before,
+.mapboxgl-user-location-show-heading .mapboxgl-user-location-heading::after {
+    content: "";
+    border-bottom: 7.5px solid #4aa1eb;
+    position: absolute;
+}
+
+.mapboxgl-user-location-show-heading .mapboxgl-user-location-heading::before {
+    border-left: 7.5px solid transparent;
+    transform: translate(0, -28px) skewY(-20deg);
+}
+
+.mapboxgl-user-location-show-heading .mapboxgl-user-location-heading::after {
+    border-right: 7.5px solid transparent;
+    transform: translate(7.5px, -28px) skewY(20deg);
 }
 
 @keyframes mapboxgl-user-location-dot-pulse {
